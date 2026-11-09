@@ -1,20 +1,24 @@
 {
   "expo": {
-    "name": "DhillonDhabaMobile",
-    "slug": "DhillonDhabaMobile",
+    "name": "Dhillon Dhaba",
+    "slug": "dhillon-dhaba-mobile",
+    "scheme": "dhillondhaba",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#FFF8E1",
+      "resizeMode": "contain"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dhillondhaba.app"
     },
     "android": {
+      "package": "com.dhillondhaba.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#FFF8E1"
       },
       "predictiveBackGestureEnabled": false
     },

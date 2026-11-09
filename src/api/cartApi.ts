@@ -1,11 +1,10 @@
 import { apiClient, getDemoMode } from './client';
-import { CartResponseDto, CreateCartItemDto, UpdateCartItemDto } from '../types';
+import { CartResponseDto, CreateCartItemDto, UpdateCartItemDto, CartSummaryDto } from '../types';
 
 export const cartApi = {
   async getCart(): Promise<CartResponseDto> {
     const isDemo = await getDemoMode();
     if (isDemo) {
-      // In demo mode, the in-memory CartContext handles state directly
       return {
         cartId: 1,
         outletId: 1,
@@ -45,21 +44,42 @@ export const cartApi = {
     return res.data;
   },
 
-  async applyCoupon(code: string): Promise<CartResponseDto> {
+  async clearCart(): Promise<void> {
+    const isDemo = await getDemoMode();
+    if (isDemo) return;
+    await apiClient.delete('/v1/cart');
+  },
+
+  async applyCoupon(code: string): Promise<CartSummaryDto> {
     const isDemo = await getDemoMode();
     if (isDemo) {
-      return { cartId: 1, items: [], itemCount: 1, itemTotal: 0, appliedCouponCode: code };
+      return {
+        itemTotal: 0,
+        deliveryFee: 0,
+        packagingFee: 0,
+        taxes: 0,
+        discountAmount: 50,
+        totalAmount: 0,
+        appliedCouponCode: code,
+      };
     }
-    const res = await apiClient.post<CartResponseDto>('/v1/cart/coupon', { code });
+    const res = await apiClient.post<CartSummaryDto>('/v1/cart/apply-coupon', { code });
     return res.data;
   },
 
-  async removeCoupon(): Promise<CartResponseDto> {
+  async getSummary(): Promise<CartSummaryDto> {
     const isDemo = await getDemoMode();
     if (isDemo) {
-      return { cartId: 1, items: [], itemCount: 1, itemTotal: 0, appliedCouponCode: null };
+      return {
+        itemTotal: 0,
+        deliveryFee: 40,
+        packagingFee: 20,
+        taxes: 0,
+        discountAmount: 0,
+        totalAmount: 60,
+      };
     }
-    const res = await apiClient.delete<CartResponseDto>('/v1/cart/coupon');
+    const res = await apiClient.get<CartSummaryDto>('/v1/cart/summary');
     return res.data;
   },
 };

@@ -8,15 +8,25 @@ import {
   Switch,
   TextInput,
   Modal,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { useDhaba } from '../../context/DhabaContext';
+import { showAlert } from '../../utils/alert';
 
 export const ProfileScreen = ({ navigation }: any) => {
-  const { user, isDemoMode, baseUrl, toggleDemoMode, updateBaseUrl, updateProfile, logout } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    isDemoMode,
+    baseUrl,
+    toggleDemoMode,
+    updateBaseUrl,
+    updateProfile,
+    logout,
+  } = useAuth();
   const { outlet } = useDhaba();
 
   const [isEditProfileOpen, setIsEditProfileOpen] = useState<boolean>(false);
@@ -26,13 +36,16 @@ export const ProfileScreen = ({ navigation }: any) => {
   const [isUrlModalOpen, setIsUrlModalOpen] = useState<boolean>(false);
   const [customUrl, setCustomUrl] = useState<string>(baseUrl);
 
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
+  const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
+
   const handleSaveProfile = async () => {
     try {
       await updateProfile(name, email);
       setIsEditProfileOpen(false);
-      Alert.alert('Profile Updated', 'Your details have been saved.');
+      showAlert('Profile Updated', 'Your details have been saved.');
     } catch (err: any) {
-      Alert.alert('Error', 'Failed to update profile');
+      showAlert('Error', 'Failed to update profile');
     }
   };
 
@@ -40,23 +53,27 @@ export const ProfileScreen = ({ navigation }: any) => {
     try {
       await updateBaseUrl(customUrl.trim());
       setIsUrlModalOpen(false);
-      Alert.alert('Backend URL Updated', `API base URL set to: ${customUrl}`);
+      showAlert('Backend URL Updated', `API base URL set to: ${customUrl}`);
     } catch {
-      Alert.alert('Error', 'Failed to update URL');
+      showAlert('Error', 'Failed to update URL');
     }
   };
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to sign out from Dhillon Dhaba?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-        },
-      },
-    ]);
+    setIsLogoutModalOpen(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      setIsLogoutModalOpen(false);
+    } catch (err: any) {
+      console.warn('Sign out error', err);
+      showAlert('Sign Out', 'Signed out from your device.');
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -66,30 +83,41 @@ export const ProfileScreen = ({ navigation }: any) => {
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* User Profile Card */}
+        {/* Dynamic User Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
             <Text style={styles.avatarLetter}>
-              {user?.name ? user.name.charAt(0).toUpperCase() : 'D'}
+              {user?.name ? user.name.charAt(0).toUpperCase() : user ? 'U' : 'G'}
             </Text>
           </View>
 
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{user?.name || 'Customer'}</Text>
-            <Text style={styles.profilePhone}>+91 {user?.phone || '9876543210'}</Text>
-            {user?.email && <Text style={styles.profileEmail}>{user.email}</Text>}
+            <Text style={styles.profileName}>{user?.name || (user ? 'Dhaba Patron' : 'Guest User')}</Text>
+            <Text style={styles.profilePhone}>
+              {user?.phone ? `+91 ${user.phone}` : 'Not signed in'}
+            </Text>
+            {user?.email ? <Text style={styles.profileEmail}>{user.email}</Text> : null}
           </View>
 
-          <TouchableOpacity
-            style={styles.editBtn}
-            onPress={() => {
-              setName(user?.name || '');
-              setEmail(user?.email || '');
-              setIsEditProfileOpen(true);
-            }}
-          >
-            <Ionicons name="pencil" size={16} color={Colors.primary} />
-          </TouchableOpacity>
+          {user ? (
+            <TouchableOpacity
+              style={styles.editBtn}
+              onPress={() => {
+                setName(user?.name || '');
+                setEmail(user?.email || '');
+                setIsEditProfileOpen(true);
+              }}
+            >
+              <Ionicons name="pencil" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.loginPill}
+              onPress={() => navigation.navigate('Login')}
+            >
+              <Text style={styles.loginPillText}>Sign In</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Quick Menu Options */}
@@ -177,19 +205,30 @@ export const ProfileScreen = ({ navigation }: any) => {
         <View style={styles.infoCard}>
           <Text style={styles.dhabaName}>{outlet?.name || 'Dhillon Dhaba'}</Text>
           <Text style={styles.dhabaAddress}>
-            {outlet?.address}, {outlet?.city}
+            {outlet?.address ? `${outlet.address}, ${outlet.city}` : 'National Highway 1'}
           </Text>
           <Text style={styles.dhabaHours}>
-            Open Daily: {outlet?.opensAt || '10:00'} - {outlet?.closesAt || '23:30'}
+            Open Daily: {outlet?.opensAt || '1:00 PM'} - {outlet?.closesAt || '2:00 AM'}
           </Text>
-          <Text style={styles.dhabaPhone}>Kitchen: {outlet?.phone || '+91 98765 43210'}</Text>
+          <Text style={styles.dhabaPhone}>Kitchen: {outlet?.phone || '+91 9319036136'}</Text>
         </View>
 
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-          <Ionicons name="log-out-outline" size={20} color={Colors.badgeClosed} />
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
+        {/* Dynamic Auth Action Button */}
+        {user ? (
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+            <Ionicons name="log-out-outline" size={20} color={Colors.badgeClosed} />
+            <Text style={styles.logoutText}>Sign Out</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.signInBtn}
+            onPress={() => navigation.navigate('Login')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.signInBtnText}>Sign In / Register</Text>
+          </TouchableOpacity>
+        )}
 
         <Text style={styles.versionText}>Dhillon Dhaba Mobile v1.0.0 (Expo SDK 58)</Text>
         <View style={{ height: 40 }} />
@@ -261,6 +300,42 @@ export const ProfileScreen = ({ navigation }: any) => {
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveUrl}>
                 <Text style={styles.modalSaveText}>Save URL</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Logout Confirmation Modal */}
+      <Modal visible={isLogoutModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.logoutIconWrap}>
+              <Ionicons name="log-out-outline" size={32} color={Colors.badgeClosed} />
+            </View>
+            <Text style={styles.modalTitle}>Sign Out</Text>
+            <Text style={styles.modalSubtitle}>
+              Are you sure you want to sign out from Dhillon Dhaba? You can sign back in anytime with your mobile number.
+            </Text>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setIsLogoutModalOpen(false)}
+                disabled={isLoggingOut}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, { backgroundColor: Colors.badgeClosed }]}
+                onPress={handleConfirmLogout}
+                disabled={isLoggingOut}
+              >
+                {isLoggingOut ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalSaveText}>Sign Out</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -429,6 +504,31 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
     marginTop: 2,
   },
+  loginPill: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+  },
+  loginPillText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  signInBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.md,
+    gap: 8,
+  },
+  signInBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 15,
+  },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -513,6 +613,16 @@ const styles = StyleSheet.create({
   modalSaveText: {
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+  logoutIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFEBEE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginBottom: Spacing.sm,
   },
 });
 

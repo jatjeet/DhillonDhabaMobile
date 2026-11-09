@@ -18,8 +18,8 @@ interface DhabaContextType {
 const DhabaContext = createContext<DhabaContextType>({} as DhabaContextType);
 
 export const DhabaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [outlet, setOutlet] = useState<OutletResponseDto | null>(mockOutlet);
-  const [outletStatus, setOutletStatus] = useState<OutletStatusDto | null>(mockOutletStatus);
+  const [outlet, setOutlet] = useState<OutletResponseDto | null>(null);
+  const [outletStatus, setOutletStatus] = useState<OutletStatusDto | null>(null);
   const [addresses, setAddresses] = useState<AddressResponseDto[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<AddressResponseDto | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);

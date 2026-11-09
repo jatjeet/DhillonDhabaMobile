@@ -12,10 +12,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme';
 import { orderApi } from '../../api/orderApi';
 import { useCart } from '../../context/CartContext';
+import { useAuth } from '../../context/AuthContext';
 import { ReviewModal } from '../../components/ReviewModal';
 import { OrderSummaryDto } from '../../types';
 
 export const OrdersScreen = ({ navigation }: any) => {
+  const { isAuthenticated } = useAuth();
   const [orders, setOrders] = useState<OrderSummaryDto[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -23,14 +25,19 @@ export const OrdersScreen = ({ navigation }: any) => {
   const { addItem } = useCart();
 
   useEffect(() => {
-    loadOrders();
-  }, []);
+    if (isAuthenticated) {
+      loadOrders();
+    } else {
+      setIsLoading(false);
+      setOrders([]);
+    }
+  }, [isAuthenticated]);
 
   const loadOrders = async () => {
     try {
       setIsLoading(true);
       const res = await orderApi.getHistory();
-      setOrders(res.orders);
+      setOrders(res.orders || []);
     } catch (err) {
       console.warn('Failed to load orders', err);
     } finally {
@@ -168,10 +175,23 @@ export const OrdersScreen = ({ navigation }: any) => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="receipt-outline" size={54} color={Colors.textLight} />
-            <Text style={styles.emptyTitle}>No Orders Placed Yet</Text>
-            <Text style={styles.emptySubtitle}>
-              When you order fresh Punjabi dhaba food, you can track it here!
+            <Text style={styles.emptyTitle}>
+              {isAuthenticated ? 'No Orders Placed Yet' : 'Sign In to View Orders'}
             </Text>
+            <Text style={styles.emptySubtitle}>
+              {isAuthenticated
+                ? 'When you order fresh Punjabi dhaba food, you can track it live here!'
+                : 'Log in with your phone number to access your past orders and receipts.'}
+            </Text>
+            {!isAuthenticated && (
+              <TouchableOpacity
+                style={styles.signInBtn}
+                onPress={() => navigation.navigate('Login')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.signInBtnText}>Sign In with OTP</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
@@ -331,6 +351,18 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
+  },
+  signInBtn: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  signInBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });
 

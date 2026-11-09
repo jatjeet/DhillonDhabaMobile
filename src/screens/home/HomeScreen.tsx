@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   FlatList,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
@@ -21,12 +22,13 @@ import { outletApi } from '../../api/outletApi';
 import { CategoryWithItemsDto, MenuItemSummaryDto, PagedReviewsDto } from '../../types';
 
 export const HomeScreen = ({ navigation }: any) => {
-  const { outlet, outletStatus, refreshDhabaData } = useDhaba();
+  const { outlet, outletStatus, refreshDhabaData, isLoading: isDhabaLoading } = useDhaba();
   const { itemCount, itemTotal } = useCart();
 
   const [categories, setCategories] = useState<CategoryWithItemsDto[]>([]);
   const [reviewsData, setReviewsData] = useState<PagedReviewsDto | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [isMenuLoading, setIsMenuLoading] = useState<boolean>(true);
   const [customizingItem, setCustomizingItem] = useState<MenuItemSummaryDto | null>(null);
 
   useEffect(() => {
@@ -36,6 +38,7 @@ export const HomeScreen = ({ navigation }: any) => {
   const loadHomeData = async () => {
     if (!outlet) return;
     try {
+      setIsMenuLoading(true);
       const [menu, reviews] = await Promise.all([
         menuApi.getFullMenu(outlet.id),
         outletApi.getReviews(outlet.id, 1, 3),
@@ -44,6 +47,8 @@ export const HomeScreen = ({ navigation }: any) => {
       setReviewsData(reviews);
     } catch (err) {
       console.warn('Failed to load home data', err);
+    } finally {
+      setIsMenuLoading(false);
     }
   };
 
@@ -53,8 +58,50 @@ export const HomeScreen = ({ navigation }: any) => {
     setRefreshing(false);
   };
 
-  // Collect bestseller / signature items
-  const bestsellers = categories.flatMap(c => c.items).filter(i => i.tags?.includes('Bestseller') || i.tags?.includes('Signature Dish') || i.tags?.includes('Must Try'));
+  // Dynamically collect bestseller / signature items with fallback
+  const bestsellers = useMemo(() => {
+    const tagged = categories
+      .flatMap(c => c.items)
+      .filter(
+        i =>
+          i.tags &&
+          i.tags.some(t =>
+            ['bestseller', 'signature dish', 'must try', 'chef special'].includes(t.toLowerCase())
+          )
+      );
+    if (tagged.length > 0) return tagged;
+    return categories.flatMap(c => c.items);
+  }, [categories]);
+
+  // Helper to dynamically get category emoji and label
+  const getCategoryDisplay = (name: string) => {
+    const emojiMatch = name.match(/^(\p{Emoji}|\p{Extended_Pictographic})/u);
+    if (emojiMatch) {
+      return {
+        emoji: emojiMatch[0],
+        displayName: name.replace(/^(\p{Emoji}|\p{Extended_Pictographic})\s*/u, '').trim(),
+      };
+    }
+    const lower = name.toLowerCase();
+    let emoji = '🍲';
+    if (lower.includes('starter') || lower.includes('tikka') || lower.includes('snack')) emoji = '🍢';
+    else if (lower.includes('main') || lower.includes('curry') || lower.includes('gravy')) emoji = '🍛';
+    else if (lower.includes('bread') || lower.includes('naan') || lower.includes('roti')) emoji = '🫓';
+    else if (lower.includes('rice') || lower.includes('biryani')) emoji = '🍚';
+    else if (lower.includes('beverage') || lower.includes('drink') || lower.includes('lassi')) emoji = '🥤';
+    else if (lower.includes('dessert') || lower.includes('sweet') || lower.includes('kheer')) emoji = '🍨';
+    else if (lower.includes('tandoor')) emoji = '🔥';
+    return { emoji, displayName: name };
+  };
+
+  if ((isDhabaLoading || isMenuLoading) && categories.length === 0) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loadingText}>Fetching live menu & dhaba details...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -65,7 +112,7 @@ export const HomeScreen = ({ navigation }: any) => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Hero Promo Banner */}
+        {/* Dynamic Hero Promo Banner */}
         <View style={styles.bannerContainer}>
           <Image
             source={{
@@ -78,9 +125,13 @@ export const HomeScreen = ({ navigation }: any) => {
             <View style={styles.bannerTag}>
               <Text style={styles.bannerTagText}>PUNJABI HERITAGE</Text>
             </View>
-            <Text style={styles.bannerTitle}>Clay Tandoor & Desi Ghee Feast</Text>
-            <Text style={styles.bannerSubtitle}>
-              Slow cooked 24-hr Dal Makhani, Chur Chur Naan & Butter Chicken
+            <Text style={styles.bannerTitle}>{outlet?.name || 'Dhillon Punjabi Dhaba'}</Text>
+            <Text style={styles.bannerSubtitle} numberOfLines={2}>
+              {outlet?.address
+                ? `${outlet.address}, ${outlet.city}`
+                : bestsellers.length > 0
+                ? `Clay Tandoor • ${bestsellers.slice(0, 3).map(b => b.name).join(' • ')}`
+                : 'Slow cooked 24-hr Dal Makhani, Chur Chur Naan & Butter Chicken'}
             </Text>
 
             <TouchableOpacity
@@ -94,24 +145,38 @@ export const HomeScreen = ({ navigation }: any) => {
           </View>
         </View>
 
-        {/* Dhaba Trust Badges */}
+        {/* Dynamic Dhaba Trust Badges */}
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Ionicons name="star" size={18} color="#FFB300" />
-            <Text style={styles.statValue}>4.8 / 5.0</Text>
-            <Text style={styles.statLabel}>380+ Highway Reviews</Text>
+            <Text style={styles.statValue}>
+              {reviewsData?.summary?.averageRating
+                ? `${reviewsData.summary.averageRating.toFixed(1)} / 5.0`
+                : '5.0 / 5.0'}
+            </Text>
+            <Text style={styles.statLabel}>
+              {reviewsData?.summary?.totalReviews
+                ? `${reviewsData.summary.totalReviews}+ Highway Reviews`
+                : 'Verified Kitchen'}
+            </Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statBox}>
             <Ionicons name="time-outline" size={18} color={Colors.primary} />
-            <Text style={styles.statValue}>{outletStatus?.estimatedWaitMinutes || 30} Mins</Text>
-            <Text style={styles.statLabel}>Fresh Tandoor Time</Text>
+            <Text style={styles.statValue}>
+              {outletStatus?.estimatedWaitMinutes ? `${outletStatus.estimatedWaitMinutes} Mins` : '30 Mins'}
+            </Text>
+            <Text style={styles.statLabel}>
+              {outletStatus?.isOpen ? 'Fresh Tandoor Time' : 'Kitchen Closed'}
+            </Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statBox}>
-            <Ionicons name="flame" size={18} color="#D32F2F" />
-            <Text style={styles.statValue}>100% Charcoal</Text>
-            <Text style={styles.statLabel}>Authentic Handi</Text>
+            <Ionicons name="bicycle" size={18} color={Colors.primary} />
+            <Text style={styles.statValue}>
+              {outlet?.deliveryRadiusKm ? `${outlet.deliveryRadiusKm} Km` : '5 Km'}
+            </Text>
+            <Text style={styles.statLabel}>Delivery Radius</Text>
           </View>
         </View>
 
@@ -124,41 +189,48 @@ export const HomeScreen = ({ navigation }: any) => {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
-          {categories.map(cat => (
-            <TouchableOpacity
-              key={cat.id}
-              style={styles.categoryCard}
-              onPress={() => navigation.navigate('Menu', { selectedCategoryId: cat.id })}
-              activeOpacity={0.7}
-            >
-              <View style={styles.categoryIconWrap}>
-                <Text style={styles.categoryEmoji}>{cat.name.split(' ')[0]}</Text>
-              </View>
-              <Text style={styles.categoryName} numberOfLines={2}>
-                {cat.name.replace(/^[^\s]+\s*/, '')}
-              </Text>
-              <Text style={styles.categoryCount}>{cat.items.length} items</Text>
-            </TouchableOpacity>
-          ))}
+          {categories.map(cat => {
+            const { emoji, displayName } = getCategoryDisplay(cat.name);
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={styles.categoryCard}
+                onPress={() => navigation.navigate('Menu', { selectedCategoryId: cat.id })}
+                activeOpacity={0.7}
+              >
+                <View style={styles.categoryIconWrap}>
+                  <Text style={styles.categoryEmoji}>{emoji}</Text>
+                </View>
+                <Text style={styles.categoryName} numberOfLines={2}>
+                  {displayName}
+                </Text>
+                <Text style={styles.categoryCount}>{cat.items.length} items</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         {/* Bestsellers Section */}
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Dhabe De Bestsellers</Text>
-            <Text style={styles.sectionSubtitle}>Most loved recipes on the GT Road</Text>
-          </View>
-        </View>
+        {bestsellers.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Dhabe De Bestsellers</Text>
+                <Text style={styles.sectionSubtitle}>Most loved recipes on the GT Road</Text>
+              </View>
+            </View>
 
-        <View style={styles.dishList}>
-          {bestsellers.slice(0, 4).map(item => (
-            <DishCard
-              key={item.id}
-              item={item}
-              onCustomize={target => setCustomizingItem(target)}
-            />
-          ))}
-        </View>
+            <View style={styles.dishList}>
+              {bestsellers.slice(0, 4).map(item => (
+                <DishCard
+                  key={item.id}
+                  item={item}
+                  onCustomize={target => setCustomizingItem(target)}
+                />
+              ))}
+            </View>
+          </>
+        )}
 
         {/* Reviews Highlight */}
         {reviewsData && reviewsData.reviews.length > 0 && (
@@ -470,5 +542,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    padding: Spacing.xl,
+  },
+  loadingText: {
+    marginTop: Spacing.md,
+    fontSize: 14,
+    color: Colors.textMuted,
+    fontWeight: '500',
   },
 });

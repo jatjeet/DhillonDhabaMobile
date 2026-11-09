@@ -14,17 +14,18 @@ import { Colors, Spacing, BorderRadius } from '../../theme';
 import { useDhaba } from '../../context/DhabaContext';
 import { meApi } from '../../api/meApi';
 import { CreateAddressDto, AddressResponseDto } from '../../types';
+import { showConfirm, showAlert } from '../../utils/alert';
 
 export const AddressManagerScreen = ({ navigation }: any) => {
-  const { addresses, selectedAddress, setSelectedAddress, reloadAddresses } = useDhaba();
+  const { outlet, addresses, selectedAddress, setSelectedAddress, reloadAddresses } = useDhaba();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [label, setLabel] = useState<'Home' | 'Work' | 'Other'>('Home');
   const [line1, setLine1] = useState<string>('');
   const [line2, setLine2] = useState<string>('');
-  const [city, setCity] = useState<string>('Jalandhar');
-  const [state, setState] = useState<string>('Punjab');
-  const [pincode, setPincode] = useState<string>('144001');
+  const [city, setCity] = useState<string>(outlet?.city || 'Unnao');
+  const [state, setState] = useState<string>('Uttar Pradesh');
+  const [pincode, setPincode] = useState<string>(outlet?.pincode || '209859');
   const [isDefault, setIsDefault] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
@@ -63,21 +64,19 @@ export const AddressManagerScreen = ({ navigation }: any) => {
   };
 
   const handleDeleteAddress = (id: number) => {
-    Alert.alert('Delete Address', 'Are you sure you want to remove this address?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await meApi.deleteAddress(id);
-            await reloadAddresses();
-          } catch {
-            Alert.alert('Error', 'Failed to delete address');
-          }
-        },
+    showConfirm(
+      'Delete Address',
+      'Are you sure you want to remove this address?',
+      async () => {
+        try {
+          await meApi.deleteAddress(id);
+          await reloadAddresses();
+        } catch {
+          showAlert('Error', 'Failed to delete address');
+        }
       },
-    ]);
+      'Delete'
+    );
   };
 
   const handleSetDefault = async (id: number) => {

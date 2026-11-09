@@ -56,10 +56,12 @@ export const orderApi = {
       };
     }
 
-    const res = await apiClient.get<{ orders: OrderSummaryDto[]; totalCount: number }>('/v1/orders', {
+    const res = await apiClient.get<any>('/v1/orders', {
       params: { page, pageSize },
     });
-    return res.data;
+    const orders = res.data?.orders || res.data?.Orders || (Array.isArray(res.data) ? res.data : []);
+    const totalCount = res.data?.totalCount ?? res.data?.TotalCount ?? orders.length;
+    return { orders, totalCount };
   },
 
   async getById(id: number): Promise<OrderDetailDto> {

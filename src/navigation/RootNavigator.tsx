@@ -7,12 +7,20 @@ import { OtpScreen } from '../screens/auth/OtpScreen';
 import { CheckoutScreen } from '../screens/checkout/CheckoutScreen';
 import { OrderTrackingScreen } from '../screens/orders/OrderTrackingScreen';
 import { AddressManagerScreen } from '../screens/profile/AddressManagerScreen';
-import { RootStackParamList } from './types';
+import { RootStackParamList, AuthStackParamList } from './types';
 import { useAuth } from '../context/AuthContext';
 import { ActivityIndicator, View } from 'react-native';
 import { Colors } from '../theme';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const AuthStack = createNativeStackNavigator<AuthStackParamList>();
+
+const AuthNavigator = () => (
+  <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Screen name="Login" component={LoginScreen} />
+    <AuthStack.Screen name="Otp" component={OtpScreen} />
+  </AuthStack.Navigator>
+);
 
 export const RootNavigator = () => {
   const { isLoading } = useAuth();
@@ -29,6 +37,7 @@ export const RootNavigator = () => {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="MainTabs" component={TabNavigator} />
+        <Stack.Screen name="Auth" component={AuthNavigator as any} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Otp" component={OtpScreen} />
         <Stack.Screen name="Checkout" component={CheckoutScreen} />

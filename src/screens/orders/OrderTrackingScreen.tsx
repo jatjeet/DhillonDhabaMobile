@@ -15,6 +15,7 @@ import { StepTracker } from '../../components/StepTracker';
 import { orderApi } from '../../api/orderApi';
 import { OrderDetailDto } from '../../types';
 import { useDhaba } from '../../context/DhabaContext';
+import { showConfirm, showAlert } from '../../utils/alert';
 
 export const OrderTrackingScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
@@ -45,33 +46,28 @@ export const OrderTrackingScreen = ({ route, navigation }: any) => {
   };
 
   const handleCancel = () => {
-    Alert.alert(
+    showConfirm(
       'Cancel Order',
       'Are you sure you want to cancel this order from Dhillon Dhaba?',
-      [
-        { text: 'No, Keep Order', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setIsCancelling(true);
-              const updated = await orderApi.cancelOrder(orderId, 'Customer requested cancellation');
-              setOrder(updated);
-              Alert.alert('Order Cancelled', 'Your order has been cancelled.');
-            } catch (err: any) {
-              Alert.alert('Error', err.response?.data?.message || 'Could not cancel order');
-            } finally {
-              setIsCancelling(false);
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          setIsCancelling(true);
+          const updated = await orderApi.cancelOrder(orderId, 'Customer requested cancellation');
+          setOrder(updated);
+          showAlert('Order Cancelled', 'Your order has been cancelled.');
+        } catch (err: any) {
+          showAlert('Error', err.response?.data?.message || 'Could not cancel order');
+        } finally {
+          setIsCancelling(false);
+        }
+      },
+      'Yes, Cancel',
+      'No, Keep Order'
     );
   };
 
   const handleCallDhaba = () => {
-    const phone = outlet?.phone || '+919876543210';
+    const phone = outlet?.phone || '+919319036136';
     Linking.openURL(`tel:${phone}`);
   };
 

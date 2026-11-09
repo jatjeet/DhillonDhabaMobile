@@ -14,7 +14,12 @@ import { BillBreakdown } from '../../components/BillBreakdown';
 import { useCart } from '../../context/CartContext';
 import { useDhaba } from '../../context/DhabaContext';
 import { useAuth } from '../../context/AuthContext';
-import { availableCoupons } from '../../api/mockData';
+
+const quickCoupons = [
+  { code: 'DHABA100', title: 'Flat ₹100 OFF' },
+  { code: 'FREEDEL', title: 'Free Delivery' },
+  { code: 'TASTE20', title: '20% Special Discount' },
+];
 
 export const CartScreen = ({ navigation }: any) => {
   const {
@@ -41,10 +46,10 @@ export const CartScreen = ({ navigation }: any) => {
   const { isAuthenticated } = useAuth();
   const [couponInput, setCouponInput] = useState<string>('');
 
-  const handleApplyCoupon = (code?: string) => {
+  const handleApplyCoupon = async (code?: string) => {
     const targetCode = code || couponInput;
     if (!targetCode) return;
-    const res = applyCouponCode(targetCode);
+    const res = await applyCouponCode(targetCode);
     if (res.success) {
       setCouponInput('');
       Alert.alert('Success', res.message);
@@ -55,7 +60,7 @@ export const CartScreen = ({ navigation }: any) => {
 
   const handleProceedToCheckout = () => {
     if (!isAuthenticated) {
-      navigation.navigate('Auth', { screen: 'Login' });
+      navigation.navigate('Login');
       return;
     }
     navigation.navigate('Checkout');
@@ -237,7 +242,7 @@ export const CartScreen = ({ navigation }: any) => {
 
               {/* Quick Coupon Chips */}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickCoupons}>
-                {availableCoupons.map(c => (
+                {quickCoupons.map(c => (
                   <TouchableOpacity
                     key={c.code}
                     style={styles.couponPill}

@@ -6,7 +6,8 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SectionList,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme';
@@ -19,7 +20,7 @@ import { menuApi } from '../../api/menuApi';
 import { CategoryWithItemsDto, MenuItemSummaryDto } from '../../types';
 
 export const MenuScreen = ({ route, navigation }: any) => {
-  const { outlet } = useDhaba();
+  const { outlet, refreshDhabaData } = useDhaba();
   const { itemCount, itemTotal } = useCart();
   const initialCategoryId = route?.params?.selectedCategoryId;
 
@@ -28,17 +29,34 @@ export const MenuScreen = ({ route, navigation }: any) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'veg' | 'nonveg'>('all');
   const [customizingItem, setCustomizingItem] = useState<MenuItemSummaryDto | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
   useEffect(() => {
-    if (outlet) {
-      menuApi.getFullMenu(outlet.id).then(cats => {
-        setCategories(cats);
-        if (!selectedCategory && cats.length > 0) {
-          setSelectedCategory(cats[0].id);
-        }
-      });
-    }
+    loadMenu();
   }, [outlet]);
+
+  const loadMenu = async () => {
+    if (!outlet) return;
+    try {
+      setIsLoading(true);
+      const cats = await menuApi.getFullMenu(outlet.id);
+      setCategories(cats);
+      if (!selectedCategory && cats.length > 0) {
+        setSelectedCategory(cats[0].id);
+      }
+    } catch (err) {
+      console.warn('Failed to load menu', err);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refreshDhabaData(), loadMenu()]);
+  };
 
   const filteredCategories = useMemo(() => {
     return categories
@@ -170,25 +188,36 @@ export const MenuScreen = ({ route, navigation }: any) => {
       </ScrollView>
 
       {/* Grouped Dishes List */}
-      <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
-        {filteredCategories
-          .filter(cat => !selectedCategory || cat.id === selectedCategory)
-          .map(cat => (
-            <View key={cat.id} style={styles.catGroup}>
-              <View style={styles.catGroupHeader}>
-                <Text style={styles.catGroupTitle}>{cat.name}</Text>
-                <Text style={styles.catGroupCount}>{cat.items.length} items</Text>
-              </View>
+      <ScrollView
+        style={styles.menuScroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {isLoading && categories.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Loading menu items...</Text>
+          </View>
+        ) : (
+          filteredCategories
+            .filter(cat => !selectedCategory || cat.id === selectedCategory)
+            .map(cat => (
+              <View key={cat.id} style={styles.catGroup}>
+                <View style={styles.catGroupHeader}>
+                  <Text style={styles.catGroupTitle}>{cat.name}</Text>
+                  <Text style={styles.catGroupCount}>{cat.items.length} items</Text>
+                </View>
 
-              {cat.items.map(item => (
-                <DishCard
-                  key={item.id}
-                  item={item}
-                  onCustomize={target => setCustomizingItem(target)}
-                />
-              ))}
-            </View>
-          ))}
+                {cat.items.map(item => (
+                  <DishCard
+                    key={item.id}
+                    item={item}
+                    onCustomize={target => setCustomizingItem(target)}
+                  />
+                ))}
+              </View>
+            ))
+        )}
 
         {filteredCategories.length === 0 && (
           <View style={styles.emptyState}>
@@ -396,6 +425,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  loadingContainer: {
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 40,
+  },
+  loadingText: {
+    marginTop: Spacing.md,
+    fontSize: 14,
+    color: Colors.textMuted,
+    fontWeight: '500',
   },
 });
 

@@ -20,8 +20,14 @@ export const Header: React.FC<HeaderProps> = ({ onAddressPress, showAddress = tr
     <View style={styles.container}>
       <View style={styles.topRow}>
         <View style={styles.branding}>
-          <Text style={styles.brandTitle}>DHILLON DHABA</Text>
-          <Text style={styles.brandSubtitle}>AUTHENTIC PUNJABI HIGHWAY FLAVOURS</Text>
+          <Text style={styles.brandTitle} numberOfLines={1}>
+            {outlet?.name?.toUpperCase() || 'DHILLON DHABA'}
+          </Text>
+          <Text style={styles.brandSubtitle} numberOfLines={1}>
+            {outlet?.city
+              ? `${outlet.city.toUpperCase()} • AUTHENTIC HIGHWAY FLAVOURS`
+              : 'AUTHENTIC PUNJABI HIGHWAY FLAVOURS'}
+          </Text>
         </View>
 
         <View style={styles.rightBadges}>

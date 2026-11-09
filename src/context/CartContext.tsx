@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import {
   CartItemResponseDto,
   MenuItemSummaryDto,
   VariantDto,
   AddonOptionDto,
+  CartSummaryDto,
 } from '../types';
-import { availableCoupons } from '../api/mockData';
+import { cartApi } from '../api/cartApi';
+import { getStoredTokens, getDemoMode } from '../api/client';
 
 interface CartContextType {
   items: CartItemResponseDto[];
@@ -26,12 +28,12 @@ interface CartContextType {
     variant?: VariantDto | null,
     selectedAddons?: AddonOptionDto[],
     note?: string
-  ) => void;
-  updateQuantity: (cartItemId: number, delta: number) => void;
-  removeItem: (cartItemId: number) => void;
-  applyCouponCode: (code: string) => { success: boolean; message: string };
+  ) => Promise<void> | void;
+  updateQuantity: (cartItemId: number, delta: number) => Promise<void> | void;
+  removeItem: (cartItemId: number) => Promise<void> | void;
+  applyCouponCode: (code: string) => Promise<{ success: boolean; message: string }>;
   removeCouponCode: () => void;
-  clearCart: () => void;
+  clearCart: () => Promise<void> | void;
 }
 
 const CartContext = createContext<CartContextType>({} as CartContextType);
@@ -41,6 +43,34 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery');
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
+  const [serverSummary, setServerSummary] = useState<CartSummaryDto | null>(null);
+
+  // Sync cart with backend on startup if user is authenticated
+  useEffect(() => {
+    syncCartWithBackend();
+  }, []);
+
+  const syncCartWithBackend = async () => {
+    try {
+      const isDemo = await getDemoMode();
+      if (isDemo) return;
+      const { accessToken } = await getStoredTokens();
+      if (!accessToken) return;
+
+      const [cart, summary] = await Promise.all([cartApi.getCart(), cartApi.getSummary()]);
+      if (cart.items && cart.items.length > 0) {
+        setItems(cart.items);
+      }
+      if (cart.appliedCouponCode) {
+        setAppliedCoupon(cart.appliedCouponCode);
+      }
+      if (summary) {
+        setServerSummary(summary);
+      }
+    } catch {
+      // Guest or offline mode
+    }
+  };
 
   const itemCount = useMemo(() => {
     return items.reduce((acc, it) => acc + it.quantity, 0);
@@ -51,61 +81,71 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [items]);
 
   const packagingFee = useMemo(() => {
-    return items.length > 0 ? 20 : 0;
-  }, [items.length]);
+    if (serverSummary && items.length > 0) return serverSummary.packagingFee;
+    return items.length > 0 ? 10 : 0;
+  }, [serverSummary, items.length]);
 
   const rawDeliveryFee = useMemo(() => {
     if (orderType === 'pickup' || items.length === 0) return 0;
+    if (serverSummary) return serverSummary.deliveryFee;
     // Free delivery above ₹499
     if (itemTotal >= 499) return 0;
     return 40;
-  }, [orderType, items.length, itemTotal]);
+  }, [orderType, items.length, itemTotal, serverSummary]);
 
   const { discountAmount, deliveryFee } = useMemo(() => {
-    let disc = 0;
+    let disc = serverSummary?.discountAmount || 0;
     let delFee = rawDeliveryFee;
-
-    if (appliedCoupon && items.length > 0) {
-      const coupon = availableCoupons.find(
-        c => c.code.toUpperCase() === appliedCoupon.toUpperCase()
-      );
-      if (coupon) {
-        if (coupon.waiveDelivery) {
-          delFee = 0;
-        } else if (coupon.flatDiscount && itemTotal >= (coupon.minOrder || 0)) {
-          disc = Math.min(coupon.flatDiscount, itemTotal);
-        } else if (coupon.discountPercentage && itemTotal >= (coupon.minOrder || 0)) {
-          const calculated = (itemTotal * coupon.discountPercentage) / 100;
-          disc = Math.min(calculated, coupon.maxDiscount || calculated);
-        }
-      }
-    }
-
     return { discountAmount: disc, deliveryFee: delFee };
-  }, [appliedCoupon, items.length, itemTotal, rawDeliveryFee]);
+  }, [serverSummary, rawDeliveryFee]);
 
   const taxes = useMemo(() => {
+    if (serverSummary && items.length > 0) return serverSummary.taxes;
     // 5% GST on food item total
-    return Number(((itemTotal * 0.05)).toFixed(2));
-  }, [itemTotal]);
+    return Number((itemTotal * 0.05).toFixed(2));
+  }, [serverSummary, itemTotal]);
 
   const totalAmount = useMemo(() => {
     if (items.length === 0) return 0;
+    if (serverSummary && orderType === 'delivery') return serverSummary.totalAmount;
     const total = itemTotal + packagingFee + deliveryFee + taxes - discountAmount;
     return Math.max(0, Number(total.toFixed(2)));
-  }, [items.length, itemTotal, packagingFee, deliveryFee, taxes, discountAmount]);
+  }, [items.length, serverSummary, orderType, itemTotal, packagingFee, deliveryFee, taxes, discountAmount]);
 
-  const addItem = (
+  const addItem = async (
     item: MenuItemSummaryDto,
     variant?: VariantDto | null,
     selectedAddons: AddonOptionDto[] = [],
     note?: string
   ) => {
-    const selectedVariant = variant || (item.variants.length > 0 ? item.variants.find(v => v.isDefault) || item.variants[0] : null);
+    const selectedVariant =
+      variant || (item.variants.length > 0 ? item.variants.find(v => v.isDefault) || item.variants[0] : null);
     const variantPrice = selectedVariant ? selectedVariant.price : item.basePrice;
     const addonsDelta = selectedAddons.reduce((sum, a) => sum + a.priceDelta, 0);
     const unitPrice = variantPrice + addonsDelta;
 
+    // Check if live backend can receive the item
+    try {
+      const isDemo = await getDemoMode();
+      const { accessToken } = await getStoredTokens();
+      if (!isDemo && accessToken) {
+        const res = await cartApi.addItem({
+          itemId: item.id,
+          variantId: selectedVariant?.id || null,
+          quantity: 1,
+          addons: selectedAddons.map(a => a.id),
+          itemNote: note || null,
+        });
+        setItems(res.items);
+        const summary = await cartApi.getSummary();
+        setServerSummary(summary);
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend addItem sync skipped, updating locally:', err);
+    }
+
+    // Local in-memory fallback (e.g. for guest checkout before login)
     const addonIds = selectedAddons.map(a => a.id).sort().join('-');
     const existingIndex = items.findIndex(
       it =>
@@ -138,16 +178,38 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateQuantity = (cartItemId: number, delta: number) => {
+  const updateQuantity = async (cartItemId: number, delta: number) => {
+    const target = items.find(it => it.id === cartItemId);
+    const newQty = target ? target.quantity + delta : 0;
+
+    try {
+      const isDemo = await getDemoMode();
+      const { accessToken } = await getStoredTokens();
+      if (!isDemo && accessToken) {
+        if (newQty <= 0) {
+          const res = await cartApi.removeItem(cartItemId);
+          setItems(res.items);
+        } else {
+          const res = await cartApi.updateItem(cartItemId, { quantity: newQty });
+          setItems(res.items);
+        }
+        const summary = await cartApi.getSummary();
+        setServerSummary(summary);
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend updateItem sync skipped, updating locally:', err);
+    }
+
     setItems(prev => {
       return prev
         .map(it => {
           if (it.id === cartItemId) {
-            const newQty = it.quantity + delta;
+            const nextQty = it.quantity + delta;
             return {
               ...it,
-              quantity: newQty,
-              lineTotal: newQty * it.unitPrice,
+              quantity: nextQty,
+              lineTotal: nextQty * it.unitPrice,
             };
           }
           return it;
@@ -156,37 +218,61 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const removeItem = (cartItemId: number) => {
+  const removeItem = async (cartItemId: number) => {
+    try {
+      const isDemo = await getDemoMode();
+      const { accessToken } = await getStoredTokens();
+      if (!isDemo && accessToken) {
+        const res = await cartApi.removeItem(cartItemId);
+        setItems(res.items);
+        const summary = await cartApi.getSummary();
+        setServerSummary(summary);
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend removeItem sync skipped:', err);
+    }
     setItems(prev => prev.filter(it => it.id !== cartItemId));
   };
 
-  const applyCouponCode = (code: string): { success: boolean; message: string } => {
+  const applyCouponCode = async (code: string): Promise<{ success: boolean; message: string }> => {
     const normalized = code.trim().toUpperCase();
-    const coupon = availableCoupons.find(c => c.code.toUpperCase() === normalized);
 
-    if (!coupon) {
-      return { success: false, message: 'Invalid coupon code' };
-    }
-
-    if (coupon.minOrder && itemTotal < coupon.minOrder) {
+    try {
+      const summary = await cartApi.applyCoupon(normalized);
+      setServerSummary(summary);
+      setAppliedCoupon(normalized);
+      return {
+        success: true,
+        message: `Coupon '${normalized}' applied! You save ₹${summary.discountAmount.toFixed(2)}`,
+      };
+    } catch (err: any) {
       return {
         success: false,
-        message: `Add ₹${coupon.minOrder - itemTotal} more to apply this coupon`,
+        message: err.response?.data?.message || 'Invalid or expired coupon code.',
       };
     }
-
-    setAppliedCoupon(coupon.code);
-    return { success: true, message: `Coupon ${coupon.code} applied successfully!` };
   };
 
   const removeCouponCode = () => {
     setAppliedCoupon(null);
+    setServerSummary(prev => (prev ? { ...prev, discountAmount: 0, appliedCouponCode: null } : null));
   };
 
-  const clearCart = () => {
+  const clearCart = async () => {
+    try {
+      const isDemo = await getDemoMode();
+      const { accessToken } = await getStoredTokens();
+      if (!isDemo && accessToken) {
+        await cartApi.clearCart();
+      }
+    } catch {
+      // Ignore clear failure
+    }
     setItems([]);
     setAppliedCoupon(null);
     setSpecialInstructions('');
+    setServerSummary(null);
   };
 
   return (
@@ -219,4 +305,3 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 export const useCart = () => useContext(CartContext);
-

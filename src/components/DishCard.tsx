@@ -46,13 +46,46 @@ export const DishCard: React.FC<DishCardProps> = ({ item, onCustomize }) => {
   const defaultVariant = item.variants.find(v => v.isDefault) || item.variants[0];
   const displayPrice = defaultVariant ? defaultVariant.price : item.basePrice;
 
+  const isBestseller =
+    item.tags &&
+    item.tags.some(t =>
+      ['bestseller', 'signature dish', 'must try', 'chef special'].includes(t.toLowerCase())
+    );
+
+  const getDishFallbackImage = (name: string, isVeg: boolean) => {
+    const n = name.toLowerCase();
+    if (n.includes('butter chicken') || n.includes('murgh')) {
+      return 'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?w=600&auto=format&fit=crop&q=80';
+    }
+    if (n.includes('dal makhani') || n.includes('daal') || n.includes('dal')) {
+      return 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=600&auto=format&fit=crop&q=80';
+    }
+    if (n.includes('paneer') || n.includes('tikka')) {
+      return 'https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=600&auto=format&fit=crop&q=80';
+    }
+    if (n.includes('naan') || n.includes('roti') || n.includes('paratha') || n.includes('kulcha')) {
+      return 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=600&auto=format&fit=crop&q=80';
+    }
+    if (n.includes('biryani') || n.includes('rice')) {
+      return 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=600&auto=format&fit=crop&q=80';
+    }
+    if (n.includes('lassi') || n.includes('chaas') || n.includes('shake')) {
+      return 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=600&auto=format&fit=crop&q=80';
+    }
+    return isVeg
+      ? 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=600&auto=format&fit=crop&q=80'
+      : 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?w=600&auto=format&fit=crop&q=80';
+  };
+
+  const imageUri = item.imageUrl || getDishFallbackImage(item.name, item.isVeg);
+
   return (
     <View style={styles.card}>
       <View style={styles.infoContainer}>
         <View style={styles.badgeRow}>
           <VegBadge isVeg={item.isVeg} size={15} />
           {item.spiceLevel && <SpiceBadge spiceLevel={item.spiceLevel} />}
-          {item.tags?.includes('Bestseller') && (
+          {isBestseller && (
             <View style={styles.bestsellerBadge}>
               <Text style={styles.bestsellerText}>★ BESTSELLER</Text>
             </View>
@@ -74,13 +107,7 @@ export const DishCard: React.FC<DishCardProps> = ({ item, onCustomize }) => {
       </View>
 
       <View style={styles.imageActionContainer}>
-        {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
-        ) : (
-          <View style={[styles.image, styles.placeholderImage]}>
-            <Ionicons name="restaurant-outline" size={32} color={Colors.textLight} />
-          </View>
-        )}
+        <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
 
         <View style={styles.actionButtonWrapper}>
           {totalQty === 0 ? (

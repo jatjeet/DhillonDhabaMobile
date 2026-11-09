@@ -18,7 +18,10 @@ interface AuthContextType {
   isDemoMode: boolean;
   baseUrl: string;
   requestOtp: (phone: string) => Promise<{ success: boolean; message: string }>;
-  verifyOtp: (phone: string, otp: string) => Promise<boolean>;
+  verifyOtp: (
+    phone: string,
+    otp: string
+  ) => Promise<{ success: boolean; isNewUser: boolean; user?: UserDto | null }>;
   logout: () => Promise<void>;
   updateProfile: (name: string, email: string) => Promise<void>;
   toggleDemoMode: (enabled: boolean) => Promise<void>;
@@ -30,7 +33,7 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserDto | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isDemoMode, setIsDemoModeState] = useState<boolean>(true);
+  const [isDemoMode, setIsDemoModeState] = useState<boolean>(false);
   const [baseUrl, setBaseUrlState] = useState<string>('');
 
   useEffect(() => {
@@ -46,10 +49,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setBaseUrlState(currentUrl);
 
       const { accessToken } = await getStoredTokens();
-      if (accessToken || demo) {
-        // In demo mode or if tokens exist, fetch user
+      if (accessToken) {
+        try {
+          const userData = await meApi.getMe();
+          setUser(userData);
+        } catch (err) {
+          console.warn('Failed to fetch user with stored token', err);
+          setUser(null);
+        }
+      } else if (demo) {
         const userData = await meApi.getMe();
         setUser(userData);
+      } else {
+        setUser(null);
       }
     } catch (err) {
       console.warn('Init auth failed:', err);
@@ -63,18 +75,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: res.success, message: res.message };
   };
 
-  const verifyOtp = async (phone: string, otp: string): Promise<boolean> => {
+  const verifyOtp = async (
+    phone: string,
+    otp: string
+  ): Promise<{ success: boolean; isNewUser: boolean; user?: UserDto | null }> => {
     const res = await authApi.verifyOtp(phone, otp);
     if (res.success && res.user) {
       setUser(res.user);
-      return true;
+      return { success: true, isNewUser: res.isNewUser, user: res.user };
     }
-    return false;
+    return { success: false, isNewUser: false };
   };
 
   const logout = async () => {
-    await authApi.logout();
-    setUser(null);
+    try {
+      await authApi.logout();
+    } catch (err) {
+      console.warn('Logout failed:', err);
+    } finally {
+      setUser(null);
+    }
   };
 
   const updateProfile = async (name: string, email: string) => {

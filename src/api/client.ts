@@ -1,7 +1,7 @@
 // Axios API Client with JWT Bearer Token Injection & Refresh Rotation
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 
 const STORAGE_KEYS = {
   ACCESS_TOKEN: '@dhillon_access_token',
@@ -11,12 +11,35 @@ const STORAGE_KEYS = {
   DEMO_MODE: '@dhillon_demo_mode',
 };
 
-// Default Backend URL based on platform
-// Android Emulator accesses host loopback via 10.0.2.2; iOS / Web uses localhost
-export const DEFAULT_BASE_URL = Platform.select({
-  android: 'http://10.0.2.2:5088',
-  default: 'http://localhost:5088',
-});
+// Intelligently compute default backend URL
+export function resolveDefaultBaseUrl(): string {
+  // 1. Web browser: connect to the same host on port 5088
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) {
+    const host = window.location.hostname || 'localhost';
+    return `http://${host}:5088`;
+  }
+
+  // 2. React Native DEV on physical device / Expo Go: extract Metro host LAN IP (e.g. 192.168.1.8)
+  try {
+    const scriptURL = (NativeModules as any)?.SourceCode?.scriptURL;
+    if (scriptURL) {
+      const parts = scriptURL.split('://')[1]?.split('/')[0]?.split(':');
+      const ip = parts?.[0];
+      if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
+        return `http://${ip}:5088`;
+      }
+    }
+  } catch {}
+
+  // 3. Android Emulator accesses host loopback via 10.0.2.2
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:5088';
+  }
+
+  return 'http://localhost:5088';
+}
+
+export const DEFAULT_BASE_URL = resolveDefaultBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: DEFAULT_BASE_URL,
@@ -60,7 +83,7 @@ export async function clearTokens() {
 
 export async function getBaseUrl(): Promise<string> {
   const custom = await AsyncStorage.getItem(STORAGE_KEYS.BASE_URL);
-  return custom || DEFAULT_BASE_URL;
+  return custom || resolveDefaultBaseUrl();
 }
 
 export async function setBaseUrl(url: string) {
@@ -70,8 +93,8 @@ export async function setBaseUrl(url: string) {
 
 export async function getDemoMode(): Promise<boolean> {
   const val = await AsyncStorage.getItem(STORAGE_KEYS.DEMO_MODE);
-  // Default to true on initial launch so the user has an instant working demo out of the box!
-  return val === null ? true : val === 'true';
+  // Default to false so the app binds to live dynamic backend data out of the box!
+  return val === 'true';
 }
 
 export async function setDemoMode(enabled: boolean) {

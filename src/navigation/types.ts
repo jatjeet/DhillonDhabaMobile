@@ -8,9 +8,14 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
+export type AuthStackParamList = {
+  Login: undefined;
+  Otp: { phone: string };
+};
+
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
-  Auth: { screen?: string } | undefined;
+  Auth: NavigatorScreenParams<AuthStackParamList> | { screen?: string; params?: any } | undefined;
   Login: undefined;
   Otp: { phone: string };
   Checkout: undefined;
